@@ -25,7 +25,10 @@ const char* keyboards[][12] = {
 "snare.wav","tom-low.wav"},
   {"freq261.wav","freq277.wav","freq294.wav","freq311.wav",
   "freq329.wav","freq349.wav","freq370.wav","freq392.wav",
-  "freq415.wav","freq440.wav","freq466.wav","freq494.wav"}
+  "freq415.wav","freq440.wav","freq466.wav","freq494.wav"},
+  {"catf.wav","catfs.wav","catgs.wav","catg.wav","cata.wav",
+"catbb.wav","catb.wav","catc.wav","catcs.wav","catd.wav",
+"catds.wav","cate.wav"}
   };
 
 
