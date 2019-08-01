@@ -15,7 +15,12 @@ uint16_t lasttouched = 0;
 uint16_t currtouched = 0;
 uint16_t keyboardswitch = 1;
 uint16_t currentkeyboard = 0;
-uint16_t keyboardlength = 2;
+uint16_t keyboardlength =  3;
+uint16_t numNotes = 0;
+float cGain = 0.25;
+byte noteTesting = 0;
+int chord[] = {0,0,0,0};
+#define KEYBOARD_SWITCH 16
 
 
 const char* keyboards[][12] = {
@@ -36,12 +41,25 @@ const char* keyboards[][12] = {
 
 Adafruit_MPR121 cap = Adafruit_MPR121();
 
-AudioPlaySdWav           playWav1;
-// Digital I2S, 
+AudioPlaySdWav           playWav1; 
+AudioPlaySdWav           playWav2; 
+AudioPlaySdWav           playWav3; 
+AudioPlaySdWav           playWav4; 
+AudioMixer4              mixer1;
+AudioMixer4              mixer2;
 AudioOutputI2S           audioOutput;
 AudioConnection          patchCord1(playWav1, 0, audioOutput, 0);
 AudioConnection          patchCord2(playWav1, 1, audioOutput, 1);
+AudioConnection          patchCord3(playWav2, 0, audioOutput, 0);
+AudioConnection          patchCord4(playWav2, 1, audioOutput, 1);
+AudioConnection          patchCord5(playWav3, 0, audioOutput, 0);
+AudioConnection          patchCord6(playWav3, 1, audioOutput, 1);
+AudioConnection          patchCord7(playWav4, 0, audioOutput, 0);
+AudioConnection          patchCord8(playWav4, 1, audioOutput, 1);
+AudioConnection          patchCord9(mixer1, 0, audioOutput, 0);
+AudioConnection          patchCord10(mixer2, 0, audioOutput, 1);
 AudioControlSGTL5000     sgtl5000_1;
+
 
 // Use these with the Teensy Audio Shield
 #define SDCARD_CS_PIN    10
@@ -51,7 +69,7 @@ AudioControlSGTL5000     sgtl5000_1;
 
 void setup() {
   Serial.begin(9600);
-   pinMode(16, INPUT_PULLUP);
+   pinMode(KEYBOARD_SWITCH, INPUT_PULLUP);
 
   
   // Audio connections require memory to work.  For more
@@ -73,6 +91,17 @@ void setup() {
       delay(500);
     }
   }
+  
+  
+  mixer1.gain(0, 0.25);
+  mixer1.gain(1, 0.25);
+  mixer1.gain(2, 0.25);
+  mixer1.gain(3, 0.25);
+  mixer2.gain(0, 0.25);
+  mixer2.gain(1, 0.25);
+  mixer2.gain(2, 0.25);
+  mixer2.gain(3, 0.25);
+  
   // Default address is 0x5A, if tied to 3.3V its 0x5B
   // If tied to SDA its 0x5C and if SCL then 0x5D
   if (!cap.begin(0x5A)) {
@@ -102,11 +131,55 @@ void playFile(const char *filename)
   }
 }
 
+void playChord(int chord[], int notes, int ckeyboard){
+  
+    if (playWav1.isPlaying() == false && notes > 0) {
+    Serial.println("Start playing 1");
+    playWav1.play(keyboards[ckeyboard][chord[0]]);
+    delay(10); // wait for library to parse WAV info
+  }
+  if (playWav2.isPlaying() == false && notes > 1) {
+    Serial.println("Start playing 2");
+    playWav2.play(keyboards[ckeyboard][chord[1]]);
+    delay(10); // wait for library to parse WAV info
+  }
+    if (playWav3.isPlaying() == false && notes > 2) {
+    Serial.println("Start playing 3");
+    playWav1.play(keyboards[ckeyboard][chord[2]]);
+    delay(10); // wait for library to parse WAV info
+  }
+  if (playWav4.isPlaying() == false && notes > 3) {
+    Serial.println("Start playing 4");
+    playWav2.play(keyboards[ckeyboard][chord[3]]);
+    delay(10); // wait for library to parse WAV info
+  }
+}
 
+int readNotes(int notes){
+  for (uint8_t i=0; i<4; i++){
+    chord[i]=0;
+  }
+  numNotes = 0;
+   for (uint8_t i=0; i<12; i++) {
+     noteTesting =  bitRead(notes, 11-i);
+     if(noteTesting == 1){
+      chord[numNotes] = i; 
+      numNotes ++;
+     }
+   }
+   Serial.print('\n');
+   Serial.print("chord:");
+   for (uint8_t i=0; i<4; i++){
+    Serial.print(chord[i]);
+  }
+  Serial.print('\n');
+   delay(1000);
+ return numNotes;
+}
 
 void loop() {
   
-   keyboardswitch = digitalRead(16);
+   keyboardswitch = digitalRead(KEYBOARD_SWITCH);
    if(!keyboardswitch){
     currentkeyboard++;
     if( currentkeyboard == keyboardlength){
@@ -117,8 +190,10 @@ void loop() {
    }
    
    currtouched = cap.touched();
-
+  numNotes = readNotes(currtouched);
+  playChord(chord, numNotes, currentkeyboard);
  
+  /*
   for (uint8_t i=0; i<12; i++) {
     // it if *is* touched  alert!
     if ((currtouched & _BV(i)) ) {
@@ -129,5 +204,5 @@ void loop() {
 
   // reset our state
   lasttouched = currtouched;
-
+*/
 }
