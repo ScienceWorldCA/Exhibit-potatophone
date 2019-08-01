@@ -11,15 +11,17 @@
 #define _BV(bit) (1 << (bit)) 
 #endif
 
-uint16_t lasttouched = 0;
-uint16_t currtouched = 0;
-uint16_t keyboardswitch = 1;
-uint16_t currentkeyboard = 0;
-uint16_t keyboardlength =  3;
+
+uint16_t touchedPins = 0;
+uint16_t keyboardSwitched = 1;
+uint16_t currentKeyboard = 0;
+uint16_t keyboardLength = 3;
 uint16_t numNotes = 0;
 float cGain = 0.25;
-byte noteTesting = 0;
+byte currentNote = 0;
 int chord[] = {0,0,0,0};
+
+
 #define KEYBOARD_SWITCH 16
 
 
@@ -48,16 +50,24 @@ AudioPlaySdWav           playWav4;
 AudioMixer4              mixer1;
 AudioMixer4              mixer2;
 AudioOutputI2S           audioOutput;
-AudioConnection          patchCord1(playWav1, 0, audioOutput, 0);
-AudioConnection          patchCord2(playWav1, 1, audioOutput, 1);
-AudioConnection          patchCord3(playWav2, 0, audioOutput, 0);
-AudioConnection          patchCord4(playWav2, 1, audioOutput, 1);
-AudioConnection          patchCord5(playWav3, 0, audioOutput, 0);
-AudioConnection          patchCord6(playWav3, 1, audioOutput, 1);
-AudioConnection          patchCord7(playWav4, 0, audioOutput, 0);
-AudioConnection          patchCord8(playWav4, 1, audioOutput, 1);
+AudioInputI2S            i2s2;  
+AudioRecordQueue         queue1;         
+AudioPlaySdRaw           playRaw1;
+AudioAnalyzePeak         peak1; 
+AudioConnection          patchCord1(playWav1, 0, mixer1, 0);
+AudioConnection          patchCord2(playWav1, 1, mixer2, 0);
+AudioConnection          patchCord3(playWav2, 0, mixer1, 1);
+AudioConnection          patchCord4(playWav2, 1, mixer2, 1);
+AudioConnection          patchCord5(playWav3, 0, mixer1, 2);
+AudioConnection          patchCord6(playWav3, 1, mixer2, 2);
+AudioConnection          patchCord7(playWav4, 0, mixer1, 3);
+AudioConnection          patchCord8(playWav4, 1, mixer2, 3);
 AudioConnection          patchCord9(mixer1, 0, audioOutput, 0);
 AudioConnection          patchCord10(mixer2, 0, audioOutput, 1);
+AudioConnection          patchCord11(i2s2, 0, queue1, 0);
+AudioConnection          patchCord12(i2s2, 0, peak1, 0);
+AudioConnection          patchCord13(playRaw1, 0, audioOutput, 0);
+AudioConnection          patchCord14(playRaw1, 0, audioOutput, 1);
 AudioControlSGTL5000     sgtl5000_1;
 
 
@@ -66,20 +76,31 @@ AudioControlSGTL5000     sgtl5000_1;
 #define SDCARD_MOSI_PIN  7
 #define SDCARD_SCK_PIN   14
 
+const int myInput = AUDIO_INPUT_MIC;
+#define RECORD_BUTTON 15
+
+int mode = 0; 
+File frec;
+
+elapsedMillis timeElapsed;
+uint16_t interval = 10000;
+
 
 void setup() {
   Serial.begin(9600);
    pinMode(KEYBOARD_SWITCH, INPUT_PULLUP);
+  pinMode(RECORD_BUTTON, INPUT_PULLUP);
 
   
   // Audio connections require memory to work.  For more
   // detailed information, see the MemoryAndCpuUsage example
-  AudioMemory(8);
+  AudioMemory(60);
 
   // Comment these out if not using the audio adaptor board.
   // This may wait forever if the SDA & SCL pins lack
   // pullup resistors
   sgtl5000_1.enable();
+  sgtl5000_1.inputSelect(myInput);
   sgtl5000_1.volume(0.8);
 
   SPI.setMOSI(SDCARD_MOSI_PIN);
@@ -93,14 +114,15 @@ void setup() {
   }
   
   
-  mixer1.gain(0, 0.25);
-  mixer1.gain(1, 0.25);
-  mixer1.gain(2, 0.25);
-  mixer1.gain(3, 0.25);
-  mixer2.gain(0, 0.25);
-  mixer2.gain(1, 0.25);
-  mixer2.gain(2, 0.25);
-  mixer2.gain(3, 0.25);
+
+  mixer1.gain(0, cGain);
+  mixer1.gain(1, cGain);
+  mixer1.gain(2, cGain);
+  mixer1.gain(3, cGain);
+  mixer2.gain(0, cGain);
+  mixer2.gain(1, cGain);
+  mixer2.gain(2, cGain);
+  mixer2.gain(3, cGain);
   
   // Default address is 0x5A, if tied to 3.3V its 0x5B
   // If tied to SDA its 0x5C and if SCL then 0x5D
@@ -132,6 +154,18 @@ void playFile(const char *filename)
 }
 
 void playChord(int chord[], int notes, int ckeyboard){
+    
+      if (notes != 0){
+      cGain = 1.0/notes;
+      mixer1.gain(0, cGain);
+      mixer1.gain(1, cGain);
+      mixer1.gain(2, cGain);
+      mixer1.gain(3, cGain);
+      mixer2.gain(0, cGain);
+      mixer2.gain(1, cGain);
+      mixer2.gain(2, cGain);
+      mixer2.gain(3, cGain);
+    }
   
     if (playWav1.isPlaying() == false && notes > 0) {
     Serial.println("Start playing 1");
@@ -152,6 +186,11 @@ void playChord(int chord[], int notes, int ckeyboard){
     Serial.println("Start playing 4");
     playWav2.play(keyboards[ckeyboard][chord[3]]);
     delay(10); // wait for library to parse WAV info
+  }
+  
+  
+    while (playWav1.isPlaying() || playWav2.isPlaying() || playWav3.isPlaying() || playWav4.isPlaying()) {
+   
   }
 }
 
@@ -176,23 +215,114 @@ int readNotes(int notes){
    delay(1000);
  return numNotes;
 }
+void startRecording() {
+  Serial.println("startRecording");
+  if (SD.exists("RECORD.RAW")) {
+    // The SD library writes new data to the end of the
+    // file, so to start a new recording, the old file
+    // must be deleted before new data is written.
+    SD.remove("RECORD.RAW");
+  }
+  frec = SD.open("RECORD.RAW", FILE_WRITE);
+  if (frec) {
+    queue1.begin();
+    mode = 1;
+  }
+}
+
+void continueRecording() {
+  if (queue1.available() >= 2) {
+    byte buffer[512];
+    // Fetch 2 blocks from the audio library and copy
+    // into a 512 byte buffer.  The Arduino SD library
+    // is most efficient when full 512 byte sector size
+    // writes are used.
+    memcpy(buffer, queue1.readBuffer(), 256);
+    queue1.freeBuffer();
+    memcpy(buffer+256, queue1.readBuffer(), 256);
+    queue1.freeBuffer();
+    // write all 512 bytes to the SD card
+    //elapsedMicros usec = 0;
+    frec.write(buffer, 512);
+    // Uncomment these lines to see how long SD writes
+    // are taking.  A pair of audio blocks arrives every
+    // 5802 microseconds, so hopefully most of the writes
+    // take well under 5802 us.  Some will take more, as
+    // the SD library also must write to the FAT tables
+    // and the SD card controller manages media erase and
+    // wear leveling.  The queue1 object can buffer
+    // approximately 301700 us of audio, to allow time
+    // for occasional high SD card latency, as long as
+    // the average write time is under 5802 us.
+    //Serial.print("SD write, us=");
+    //Serial.println(usec);
+  }
+}
+
+void stopRecording() {
+  Serial.println("stopRecording");
+  queue1.end();
+  if (mode == 1) {
+    while (queue1.available() > 0) {
+      frec.write((byte*)queue1.readBuffer(), 256);
+      queue1.freeBuffer();
+    }
+    frec.close();
+  }
+  mode = 0;
+}
+
+void playRawFile(){
+  Serial.println("startPlaying");
+  playRaw1.play("RECORD.RAW");
+  while(playRaw1.isPlaying()){
+    
+  }
+  Serial.println("donePlaying");
+}
+
+void recordRaw(uint16_t seconds){
+  timeElapsed = 0;
+  Serial.println("Oh No!");
+  startRecording();
+  while(timeElapsed < seconds) {
+     continueRecording();
+  };
+  stopRecording();
+  
+}
 
 void loop() {
   
-   keyboardswitch = digitalRead(KEYBOARD_SWITCH);
-   if(!keyboardswitch){
-    currentkeyboard++;
-    if( currentkeyboard == keyboardlength){
-      currentkeyboard = 0;
-    }
-    Serial.print(keyboards[currentkeyboard][0]);
+ //check if keyboard has been switched
+   //keyboard switching by incrementing array of filenames
+   if(!digitalRead(KEYBOARD_SWITCH)){
+    currentKeyboard = (currentKeyboard+1)%keyboardLength;
+    //print name of first note in the new keyboard (for debugging help)
+    Serial.print(keyboards[currentKeyboard][0]);
     delay(500);
    }
+
+   if(!digitalRead(RECORD_BUTTON)){
+    currentKeyboard = keyboardLength;
+    delay(500);
+    recordRaw(interval);
+    }
+
+   touchedPins = cap.touched(); 
    
-   currtouched = cap.touched();
-  numNotes = readNotes(currtouched);
-  playChord(chord, numNotes, currentkeyboard);
- 
+   if(currentKeyboard == keyboardLength){
+    if(touchedPins > 0){
+      playRawFile(); 
+    }
+   }
+
+   else{
+  //check while inputs have been pressed on MPR 121 board and play corresponding chord
+    numNotes = readNotes(touchedPins);
+    playChord(chord, numNotes, currentKeyboard);
+   }
+
   /*
   for (uint8_t i=0; i<12; i++) {
     // it if *is* touched  alert!
