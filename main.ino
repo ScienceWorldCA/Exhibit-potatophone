@@ -26,12 +26,16 @@ Adafruit_MPR121 cap = Adafruit_MPR121();
 uint16_t touchedPins = 0;
 uint16_t keyboardSwitched = 1;
 uint16_t currentKeyboard = 0;
-uint16_t keyboardLength = 3;
+
 uint16_t numNotes = 0;
 float cGain = 0.25;
 byte currentNote = 0;
 int chord[] = {0,0,0,0};
 
+
+// IF ADDING KEYBOARDS ONLY CHANGE THIS SECTION STARTS HERE:
+
+uint16_t keyboardLength = 3;
 
 const char* keyboards[][12] = {
   
@@ -49,6 +53,8 @@ const char* keyboards[][12] = {
 "CATDS.WAV","CATE.WAV"}
 
   };
+
+// IF ADDING KEYBOARDS ONLY CHANGE THIS SECTION ENDS HERE:
 
 // Audio Connections
 AudioPlaySdWav           playWav1;
