@@ -24,7 +24,6 @@ uint16_t interval = 5000; //length of audio recording in ms
 #define KEYBOARD_SWITCH 16
 Adafruit_MPR121 cap = Adafruit_MPR121();
 uint16_t touchedPins = 0;
-uint16_t keyboardSwitched = 1;
 uint16_t currentKeyboard = 0;
 
 uint16_t numNotes = 0;
@@ -43,9 +42,9 @@ const char* keyboards[][12] = {
   "FREQ329.WAV","FREQ349.WAV","FREQ370.WAV","FREQ392.WAV",
   "FREQ415.WAV","FREQ440.WAV","FREQ466.WAV","FREQ494.WAV"},
   
-{"BDZOME.WAV","CLOSEDHAT.WAV","CRASH.WAV","DRUMCOWBELL.WAV",
-"ELECBLIP2.WAV","ELECCYMBAL.WAV","ELECHISNARE.WAV",
-"OPENHAT.WAV","OPENTHENCLOSEDHAT.WAV","RIDEBELL.WAV",
+{"BDZOME.WAV","CLOSED.WAV","CRASH.WAV","COWBELL.WAV",
+"ELECBLIP.WAV","CYMBAL.WAV","HISNARE.WAV",
+"OPENHAT.WAV","OPTCLOSE.WAV","RIDEBELL.WAV",
 "SNARE.WAV","TOMLOW.WAV"},
 
 {"CATF.WAV","CATFS.WAV","CATGS.WAV","CATG.WAV","CATA.WAV",
@@ -98,7 +97,7 @@ void setup() {
 
   sgtl5000_1.enable();
   sgtl5000_1.inputSelect(myInput);
-  sgtl5000_1.volume(0.2);
+  sgtl5000_1.volume(0.7);
 
   SPI.setMOSI(SDCARD_MOSI_PIN);
   SPI.setSCK(SDCARD_SCK_PIN);
@@ -130,7 +129,7 @@ int createChord(int notes, int* chord) {
   int numNotes = 0;
   int currentNote = 0;
   for (int i = 0; i < 12; i++) {
-    currentNote = bitRead(notes, 11 - i);
+    currentNote = bitRead(notes,  i);
     if (currentNote == 1) {
       chord[numNotes] = i;
       numNotes++;
@@ -283,6 +282,8 @@ void printChord(){
 
 
 void loop() {
+
+ 
   
   //check if keyboard has been switched
    //keyboard switching by incrementing array of filenames
@@ -316,4 +317,5 @@ void loop() {
     playChord(chord, numNotes, currentKeyboard);
    }
 }
+
 
